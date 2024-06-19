@@ -47,3 +47,7 @@
     - swing heat map
     - contact heat map
     - speed of bat heat map
+8. create a dataframe summarizing every swing in the dataset
+    - xy location of ball when it crosses the plate
+    - ball/strike/in play outcome
+    - pitch type
