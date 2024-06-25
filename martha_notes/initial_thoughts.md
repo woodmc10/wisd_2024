@@ -51,3 +51,6 @@
     - xy location of ball when it crosses the plate
     - ball/strike/in play outcome
     - pitch type
+9. contact angles
+    - attack angle: angle of bat **path** at contact relative to the ground
+    - vertical bat angle: angle of barrel at contact relative to the ground
