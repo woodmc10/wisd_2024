@@ -19,6 +19,15 @@
 3. Identifying the best matchups
 4. Line up Building (who does best against the opposition pitcher/bull pen)
 5. Post Game Review
+    - swing selection (what pitches did the batter swing at)
+    - on time 
+        * how to judge this? 
+            - where do the bat and ball cross the same y-axis plane?
+            - what's the "best" place for them to cross?
+                * mid plate?
+                * mid swing?
+    - 2 strike plate coverage
+        * fouling off strikes and near strikes to get a ball to hit
 6. In Game Adjustments
 7. Predicting Swing Outcomes
     - not sure this one is possible, but it might be
