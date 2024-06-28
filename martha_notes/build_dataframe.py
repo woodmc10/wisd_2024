@@ -6,17 +6,24 @@ def build_ball_flight_df(json_file):
     for row in json_file['samples_ball']:
         row_dict = dict()
         row_dict['time'] = row.get('time', 'no_time')
+        
         row_dict['pos_0'] = row.get('pos', ['no_pos', 'no_pos', 'no_pos'])[0]
         row_dict['pos_1'] = row.get('pos', ['no_pos', 'no_pos', 'no_pos'])[1]
         row_dict['pos_2'] = row.get('pos', ['no_pos', 'no_pos', 'no_pos'])[2]
+        
         row_dict['vel_0'] = row.get('vel', ['no_vel', 'no_vel', 'no_vel'])[0]
         row_dict['vel_1'] = row.get('vel', ['no_vel', 'no_vel', 'no_vel'])[1]
         row_dict['vel_2'] = row.get('vel', ['no_vel', 'no_vel', 'no_vel'])[2]
+        
         row_dict['acc_0'] = row.get('acc', ['no_acc', 'no_acc', 'no_acc'])[0]
         row_dict['acc_1'] = row.get('acc', ['no_acc', 'no_acc', 'no_acc'])[1]
         row_dict['acc_2'] = row.get('acc', ['no_acc', 'no_acc', 'no_acc'])[2]
+        
         row_list.append(row_dict)
-    return pd.DataFrame.from_dict(row_list)
+
+    ball_df = pd.DataFrame.from_dict(row_list)
+    ball_df['mid_plate_dist'] = abs(ball_df['pos_1'] - 0.7083)
+    return ball_df
 
 def build_bat_path_df(json_file):
     row_list = []
@@ -47,6 +54,22 @@ def build_summary_dict(json_file, file_path):
     summary_dict['hit_id'] = json_file['summary_acts']['hit']['eventId']
     summary_dict['stroke'] = json_file['summary_acts']['stroke']['type']
     summary_dict['event_len'] = len(json_file['events'])
+    team_1_score = json_file['summary_score']['runs']['game']['team1']
+    team_2_score = json_file['summary_score']['runs']['game']['team2']
+    summary_dict['game_score'] = f'{team_1_score} - {team_2_score}'
+    summary_dict['inning'] = len(json_file['summary_score']['runs']['innings'])
+    summary_dict['inning_outs'] = json_file['summary_score']['outs']['inning']
+    summary_dict['play_outs'] = json_file['summary_score']['outs']['play']
+    appearance_balls = json_file['summary_score']['count']['balls']['plateAppearance']
+    appearance_strikes = json_file['summary_score']['count']['strikes']['plateAppearance']
+    play_balls = json_file['summary_score']['count']['balls']['play']
+    play_strikes = json_file['summary_score']['count']['strikes']['play']
+    summary_dict['count_appearance'] = f'{appearance_balls} - {appearance_strikes}'
+    summary_dict['count_play'] = f'{play_balls} - {play_strikes}'
+    if summary_dict['event_len'] > 0:
+        summary_dict['batter'] = json_file['events'][0].get('personId', None)
+    else:
+        summary_dict['batter'] = None
     return summary_dict
 
 
@@ -73,25 +96,6 @@ def read_json_from_gcs(bucket_name, file_path):
     # Read the blob content as string and parse JSON
     json_data = blob.download_as_text()
     return json.loads(json_data)
-
-# def build_summary_dict(json_file, file_path):
-#     """
-#     Builds a summary dictionary from the given JSON file and file path.
-
-#     :param json_file: Parsed JSON object.
-#     :param file_path: Path to the file.
-#     :return: Dictionary with summary information.
-#     """
-#     summary_dict = dict()
-#     summary_dict['file_path'] = file_path
-#     summary_dict['pitch_id'] = json_file['summary_acts']['pitch']['eventId']
-#     summary_dict['pitch_type'] = json_file['summary_acts']['pitch']['type']
-#     summary_dict['pitch_result'] = json_file['summary_acts']['pitch']['result']
-#     summary_dict['action'] = json_file['summary_acts']['pitch']['action']
-#     summary_dict['hit_id'] = json_file['summary_acts']['hit']['eventId']
-#     summary_dict['stroke'] = json_file['summary_acts']['stroke']['type']
-#     summary_dict['event_len'] = len(json_file['events'])
-#     return summary_dict
 
 def process_all_files_in_bucket(bucket_name, prefix=''):
     """
