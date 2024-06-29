@@ -107,25 +107,117 @@ def process_files_in_list(bucket_name, file_list=[]):
         distance_metric_list.append(distance_metric_dict)
     return distance_metric_list
 
+def get_grade(distance, thresholds):
+    if distance == thresholds['A']:
+        return 'A'
+    elif distance > thresholds['B']:
+        return 'B'
+    elif distance > thresholds['C']:
+        return 'C'
+    elif distance > thresholds['D']:
+        return 'D'
+    else:
+        return 'F'
+    
+def convert_column_name(column_name):
+    bat_section = column_name.split('_')[0].capitalize()
+    axes_list = ['X', 'Y', 'Z']
+    letter = axes_list[int(column_name.split('_')[-1])]
+    return f'{bat_section} {letter}'
+
+def color_letter(grade):
+    color_dict = {
+        'A': 'green',
+        'B': 'blue',
+        'C': 'orange',
+        'D': 'red',
+        'F': 'red'
+    }
+    return color_dict[grade]
+
+def vis_distance(df_1, df_2, pos, grade):
+    seq1 = df_1[pos].values
+    seq2 = df_2[pos].values
+    alignment_path = dtw.warping_path(seq1, seq2)
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(seq1, label=f'Swing 1 {convert_column_name(pos)}')
+    plt.plot(seq2, label=f'Swing 2 {convert_column_name(pos)}')
+    for (i, j) in alignment_path:
+        plt.plot([i, j], [seq1[i], seq2[j]], 'k-', alpha=0.5)
+    plt.text(5, 2, grade, fontsize=100, color=color_letter(grade))
+
+    plt.legend()
+    plt.show()
+
+def distance_scorecard(distance_df): 
+    batters = distance_df.batter.unique()
+    scorecard_list = []
+    for batter in batters:
+        scorecard_dict = dict()
+        scorecard_dict['batter'] = batter
+        batter_df = distance_df[distance_df['batter'] == batter]
+        min_dist = np.mean(batter_df['distance']) - 2 * np.std(batter_df['distance'])
+        max_dist = np.mean(batter_df['distance']) + 2 * np.std(batter_df['distance'])
+        swing_count = len(batter_df)
+        good_count = len(batter_df[
+                        (batter_df['distance'] < max_dist)
+                        &
+                        (batter_df['distance'] > min_dist)
+                        ])
+        scorecard_dict['swing_count'] = swing_count
+        scorecard_dict['dist_score'] = good_count/swing_count
+        distance_thresholds = {'A': 1, 'B': 0.95, 'C': 0.9, 'D': 0.85}
+        scorecard_dict['dist_grade'] = get_grade(good_count/swing_count, distance_thresholds)
+        scorecard_dict['reference_file'] = batter_df[batter_df['distance'] == 0.0]['file'].values[0]
+        scorecard_dict['compare_file'] = batter_df[batter_df['distance'] == max(batter_df['distance'])]['file'].values[0]
+        scorecard_list.append(scorecard_dict)
+    return scorecard_list
+
 if __name__ == '__main__':
 
     bucket_name = '2024-hackathon'
 
-    summary_df = pd.read_csv('summary_df.csv')
-    batters_df = summary_df[
-        (summary_df['batter'].notnull()) 
-        &
-        (summary_df['action'] != 'HitByPitch')
-        &
-        (summary_df['pitch_result'] != 'Ball')
-            # I'll want to decide what to do with this situation,
-            # for now dropping it will work
-            # situation = check swing?
-        ].sort_values('batter')
-    file_list = batters_df.file_path.to_list()
+    # summary_df = pd.read_csv('summary_df.csv')
+    # batters_df = summary_df[
+    #     (summary_df['batter'].notnull()) 
+    #     &
+    #     (summary_df['action'] != 'HitByPitch')
+    #     &
+    #     (summary_df['pitch_result'] != 'Ball')
+    #         # I'll want to decide what to do with this situation,
+    #         # for now dropping it will work
+    #         # situation = check swing?
+    #     ].sort_values('batter')
+    # file_list = batters_df.file_path.to_list()
 
-    # Process all files in the GCS bucket and get summaries
-    metrics = process_files_in_list(bucket_name, file_list)
-    metrics_df = pd.DataFrame.from_dict(metrics)
-    metrics_df.to_csv('distance_metrics_df.csv')
+    # # Process all files in the GCS bucket and get summaries
+    # metrics = process_files_in_list(bucket_name, file_list)
+    # metrics_df = pd.DataFrame.from_dict(metrics)
+    # metrics_df.to_csv('distance_metrics_df.csv')
 
+    distance_metrics_df = pd.read_csv('distance_metrics_df.csv')
+    scorecard_df = pd.DataFrame.from_dict(distance_scorecard(distance_metrics_df))
+    batter_list = [849653732]
+        # when ready, create a list of all batters in scorecard_df and loop through
+            # need to add code to save the resulting plots
+    for batter_id in batter_list:
+        reference_file = scorecard_df[scorecard_df['batter'] == batter_id]['reference_file'].values[0]
+        print(reference_file)
+        reference_json = read_json_from_gcs(bucket_name, reference_file)
+        reference_df = normalize_path(filter_path(build_bat_path_df(reference_json)))
+        compare_file = scorecard_df[scorecard_df['batter'] == batter_id]['compare_file'].values[0]
+        compare_json = read_json_from_gcs(bucket_name, compare_file)
+        compare_df = normalize_path(filter_path(build_bat_path_df(compare_json)))
+        grade = scorecard_df[scorecard_df['batter'] == batter_id]['dist_grade'].values[0]
+        vis_distance(reference_df, compare_df, 'head_pos_0', grade)
+
+"""
+Similarity score is an evaluation of how consistent a player is with each of their swings. The path of
+each swing is compared to a reference swing (the first swing by a batter in the dataset). The similarity
+of each swing is calculated using dynamic time warping (DTW). DTW is useful for comparing time series
+data because it allows for stretching and compressing of the time component when determining the similarity
+of the path. The similarity of each component of the swing was evaluated separately and combined to
+generate a single similarity measure for each swing. The swing similarity grade is determined by finding
+the percent of swings that are outliers from the batters similarity scores sample.
+"""
