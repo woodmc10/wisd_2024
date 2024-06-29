@@ -1,6 +1,4 @@
-import json
-from google.cloud import storage
-from build_dataframe import build_bat_path_df
+from build_dataframe import build_bat_path_df, read_json_from_gcs
 
 import pandas as pd
 import numpy as np
@@ -45,25 +43,6 @@ def calculate_dtw_distance(df1, df2):
     
     return total_distance
 
-def read_json_from_gcs(bucket_name, file_path):
-    """
-    Reads a JSON file from a GCS bucket and returns the parsed JSON object.
-
-    :param bucket_name: Name of the GCS bucket.
-    :param file_path: Path to the file in the GCS bucket.
-    :return: Parsed JSON object.
-    """
-    # Initialize a client
-    client = storage.Client()
-
-    # Get the bucket and blob
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(file_path)
-
-    # Read the blob content as string and parse JSON
-    json_data = blob.download_as_text()
-    return json.loads(json_data)
-
 def process_files_in_list(bucket_name, file_list=[]):
     """
     Processes all JSON files in a GCS bucket and builds a summary dictionary for each.
@@ -73,7 +52,7 @@ def process_files_in_list(bucket_name, file_list=[]):
     :return: List of summary dictionaries.
     """
 
-    batter_id= 'None'
+    batter_id = 'None'
     batter_count = 0
     distance_metric_list = []
     for file_path in file_list:
@@ -108,7 +87,8 @@ def process_files_in_list(bucket_name, file_list=[]):
     return distance_metric_list
 
 def get_grade(distance, thresholds):
-    if distance == thresholds['A']:
+    # should this be moved to a utils file?
+    if distance >= thresholds['A']:
         return 'A'
     elif distance > thresholds['B']:
         return 'B'
@@ -120,12 +100,14 @@ def get_grade(distance, thresholds):
         return 'F'
     
 def convert_column_name(column_name):
+    # should this be moved to a utils file?
     bat_section = column_name.split('_')[0].capitalize()
     axes_list = ['X', 'Y', 'Z']
     letter = axes_list[int(column_name.split('_')[-1])]
     return f'{bat_section} {letter}'
 
 def color_letter(grade):
+    # should this be moved to a utils file?
     color_dict = {
         'A': 'green',
         'B': 'blue',
@@ -156,7 +138,11 @@ def distance_scorecard(distance_df):
     for batter in batters:
         scorecard_dict = dict()
         scorecard_dict['batter'] = batter
-        batter_df = distance_df[distance_df['batter'] == batter]
+        batter_df = distance_df[(distance_df['batter'] == batter) & (distance_df['distance'] >= 0)]
+            # distance values of -2 and -1 indicate specific data situations, and should not
+            # be included in the variance calculations
+        if len(batter_df) == 0:
+            continue
         min_dist = np.mean(batter_df['distance']) - 2 * np.std(batter_df['distance'])
         max_dist = np.mean(batter_df['distance']) + 2 * np.std(batter_df['distance'])
         swing_count = len(batter_df)
@@ -217,7 +203,17 @@ Similarity score is an evaluation of how consistent a player is with each of the
 each swing is compared to a reference swing (the first swing by a batter in the dataset). The similarity
 of each swing is calculated using dynamic time warping (DTW). DTW is useful for comparing time series
 data because it allows for stretching and compressing of the time component when determining the similarity
-of the path. The similarity of each component of the swing was evaluated separately and combined to
-generate a single similarity measure for each swing. The swing similarity grade is determined by finding
-the percent of swings that are outliers from the batters similarity scores sample.
+of the path. Swings were normalized by taking 75 frames before contact and 75 frames after contact, and by
+subtracting each frame from the starting frame. This provided a baseline swing location so similarity
+was not impacted by the batter changing their location in the box. The similarity of each component of the
+swing was evaluated separately and combined to generate a single similarity measure for each swing. The
+swing similarity grade is determined by finding the percent of swings that are outliers from the batters
+similarity scores sample.
+
+The visualization provides the batter's grade and a comparison of the batter's reference swing and their
+least similar swing.
+
+Possible adjustments
+- different score calculation: variance may not be the right way to give a consistency score
+- sword detection and visualization
 """
